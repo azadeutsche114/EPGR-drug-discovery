@@ -265,3 +265,2738 @@ print("Number of rows with zero predictions:", zero_count)
 
 results.to_csv('SMOTE_MW', index=False)
 
+######################Sampling#############################
+
+
+import os
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from sklearn.metrics import accuracy_score,confusion_matrix,classification_report
+from sklearn.metrics import recall_score,precision_score,f1_score
+from sklearn.metrics import plot_confusion_matrix,roc_curve,precision_recall_curve
+from sklearn.metrics import roc_auc_score
+from sklearn.metrics import accuracy_score, roc_curve, auc
+from sklearn.preprocessing import MinMaxScaler,StandardScaler
+from imblearn.over_sampling import SMOTE
+
+
+
+
+from sklearn.naive_bayes import GaussianNB
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import GradientBoostingClassifier, AdaBoostClassifier
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from sklearn.ensemble import RandomForestClassifier
+
+import xgboost as xgb  
+
+import pubchempy as pcp
+
+pd.set_option("display.max_columns", None)
+pd.set_option("display.max_rows", None)
+
+df = pd.read_csv('output (1).csv', encoding='ISO-8859-1')
+df
+
+df.drop(columns=["CID","NAME","ExactMass","CanonicalSMILES","PIC50","CovalentUnitCount",'ConformerCount3D',"Charge"],inplace=True)
+
+from sklearn.preprocessing import LabelEncoder
+
+# Create a LabelEncoder object
+le = LabelEncoder()
+
+# Fit the encoder to the target column
+le.fit(df['Activity'])
+
+# Transform the target column
+df['Activity'] = le.transform(df['Activity'])
+df['Activity'].value_counts()
+
+
+df.isna().sum()
+df= df.dropna()
+
+y=df["Activity"]
+x=df.drop("Activity",axis=1)
+
+from tensorflow.keras.models import Sequential
+import tensorflow as tf
+from tensorflow.keras.layers import Dropout, Dense, BatchNormalization
+from tensorflow.keras.optimizers import Adam
+from sklearn.model_selection import train_test_split
+from imblearn.over_sampling import RandomOverSampler
+from imblearn.under_sampling import RandomUnderSampler
+
+from sklearn.metrics import confusion_matrix, roc_auc_score
+import matplotlib.pyplot as plt
+import math
+
+
+X_train, X_temp, y_train, y_temp = train_test_split(x, y, test_size=0.3, random_state=123)
+X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.5, random_state=123)
+
+
+# Standardize features
+scaler = MinMaxScaler()
+X_train = scaler.fit_transform(X_train)
+X_val = scaler.transform(X_val)
+X_test = scaler.transform(X_test)
+
+
+# Apply SMOTE for synthetic sampling of the minority class
+smote = SMOTE(random_state=42, k_neighbors=3)
+X_train_resampled, y_train_resampled = smote.fit_resample(X_train, y_train)
+
+# Define model architecture
+model = Sequential([
+    Dense(units=2000, input_dim=X_train_resampled.shape[1], activation='relu', kernel_initializer='glorot_uniform'),
+    BatchNormalization(),
+    Dropout(0.5),
+    Dense(units=500, activation='relu', kernel_initializer='glorot_uniform'),
+    BatchNormalization(),
+    Dropout(0.5),
+    Dense(units=10, activation='relu', kernel_initializer='glorot_uniform'),
+    BatchNormalization(),
+    Dropout(0.5),
+    Dense(1, activation='sigmoid')
+])
+
+
+from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix, ConfusionMatrixDisplay
+import matplotlib.pyplot as plt
+from tensorflow.keras.callbacks import EarlyStopping
+from sklearn.metrics import matthews_corrcoef
+from imblearn.over_sampling import ADASYN
+from imblearn.combine import SMOTEENN, SMOTETomek
+
+
+
+
+
+# Standardize features
+scaler = MinMaxScaler()
+X_train = scaler.fit_transform(X_train)
+X_val = scaler.transform(X_val)
+X_test = scaler.transform(X_test)
+
+
+# Apply SMOTE only to the training data to address class imbalance
+smote = SMOTE(random_state=42, k_neighbors=3)
+X_train_resampled, y_train_resampled = smote.fit_resample(X_train, y_train)
+
+
+
+# Set class weights for minority class
+class_weights = {0: 5, 1: 1}  # Adjust weights based on dataset
+
+# Reinitialize model with best hyperparameters
+final_model = Sequential([
+    Dense(units=2000, input_dim=X_train_resampled.shape[1], activation='relu', kernel_initializer='glorot_uniform'),
+    BatchNormalization(),
+    Dropout(0.5),
+    Dense(units=1000, activation='relu', kernel_initializer='glorot_uniform'),
+    BatchNormalization(),
+    Dropout(0.5),
+    Dense(units=500, activation='relu', kernel_initializer='glorot_uniform'),
+    BatchNormalization(),
+    Dropout(0.5),
+    Dense(units=10, activation='relu', kernel_initializer='glorot_uniform'),
+    BatchNormalization(),
+    Dropout(0.1),
+    Dense(1, activation='sigmoid')
+])
+
+# Compile final model
+final_optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
+final_model.compile(optimizer=final_optimizer, loss='binary_crossentropy', metrics=['accuracy'])
+
+  # Add early stopping to avoid overfitting
+early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
+
+
+# Train final model with best hyperparameters
+final_model.fit(X_train_resampled, y_train_resampled,
+                epochs=16,
+                batch_size=50,
+                validation_data=(X_val, y_val),
+                callbacks=[early_stopping],
+                class_weight=class_weights,  # Add this line
+                verbose=1)
+
+# Evaluate on test data
+test_loss, test_accuracy = final_model.evaluate(X_test, y_test)
+print("Test Accuracy:", test_accuracy)
+print("Test Loss:", test_loss)
+
+
+# Predict probabilities and binary classes on the test set
+y_pred_prob = final_model.predict(X_test).flatten()
+y_pred = (y_pred_prob > 0.5).astype(int)  # Convert probabilities to binary predictions (0 or 1)
+
+# Calculate precision, recall, and AUC
+precision = precision_score(y_test, y_pred)
+recall = recall_score(y_test, y_pred)
+auc_score = roc_auc_score(y_test, y_pred_prob)
+f1 = f1_score(y_test, y_pred)
+
+print("F1 Score:", f1)
+
+print("Precision:", precision)
+print("Recall:", recall)
+print("AUC Score:", auc_score)
+# Confusion Matrix
+conf_matrix = confusion_matrix(y_test, y_pred)
+ConfusionMatrixDisplay(conf_matrix).plot(cmap='Blues')
+plt.title("Confusion Matrix")
+plt.show()
+
+def f1_score_threshold(threshold=0.5):
+    def f1_score(y_true, y_pred):
+        y_true = tf.cast(y_true, tf.float32)  # Convert y_true to float32 to match y_pred
+        y_pred = tf.cast(tf.greater(y_pred, threshold), tf.float32)
+        
+        tp = tf.reduce_sum(y_true * y_pred)
+        precision = tp / (tf.reduce_sum(y_pred) + 1e-6)
+        recall = tp / (tf.reduce_sum(y_true) + 1e-6)
+        
+        return 2 * precision * recall / (precision + recall + 1e-6)
+    
+    return f1_score
+
+# Train model
+
+# Evaluate model and plot metrics
+plt.plot(history.history['accuracy'], label='train_acc')
+plt.plot(history.history['val_accuracy'], label='val_acc')
+plt.legend()
+plt.title("Model Accuracy")
+plt.show()
+
+plt.plot(history.history['loss'], label='train_loss')
+plt.plot(history.history['val_loss'], label='val_loss')
+plt.legend()
+plt.title("Model Loss")
+plt.show()
+
+# Prediction and evaluation on test set
+y_pred = model.predict(X_test)
+y_pred_classes = [1 if prob > 0.5 else 0 for prob in y_pred]
+
+cnf_matrix = confusion_matrix(y_test, y_pred_classes)
+tn, fp, fn, tp = cnf_matrix.ravel()
+
+bacc = (tp / (tp + fn) + tn / (tn + fp)) / 2
+pre = tp / (tp + fp)
+rec = tp / (tp + fn)
+f1 = 2 * pre * rec / (pre + rec)
+# mcc = (tp * tn - fp * fn) / math.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn))
+auc = roc_auc_score(y_test, y_pred)
+
+print("Balanced Accuracy:", bacc)
+# Assuming y_pred_prob contains probability predictions
+y_pred = [1 if prob >= 0.5 else 0 for prob in y_pred_prob]
+mcc = matthews_corrcoef(y_test, y_pred)
+print("MCC",mcc)
+
+##################################Evaluation OF MODEL REFERENCE FROM RESEARCH PAPER#############################################
+
+
+
+
+def f1_score_threshold(threshold=0.5):
+    def f1_score(y_true, y_pred):
+        y_true = tf.cast(y_true, tf.float32)  # Convert y_true to float32 to match y_pred
+        y_pred = tf.cast(tf.greater(y_pred, threshold), tf.float32)
+        
+        tp = tf.reduce_sum(y_true * y_pred)
+        precision = tp / (tf.reduce_sum(y_pred) + 1e-6)
+        recall = tp / (tf.reduce_sum(y_true) + 1e-6)
+        
+        return 2 * precision * recall / (precision + recall + 1e-6)
+    
+    return f1_score
+model.compile(optimizer=Adam(learning_rate=0.01), loss='binary_crossentropy', metrics=[f1_score_threshold(0.5), 'accuracy'])
+
+# Train model
+history = model.fit(X_train_resampled, y_train_resampled, batch_size=128, epochs=30, validation_data=(X_val, y_val))
+
+# Evaluate model and plot metrics
+plt.plot(history.history['accuracy'], label='train_acc')
+plt.plot(history.history['val_accuracy'], label='val_acc')
+plt.legend()
+plt.title("Model Accuracy")
+plt.show()
+
+plt.plot(history.history['loss'], label='train_loss')
+plt.plot(history.history['val_loss'], label='val_loss')
+plt.legend()
+plt.title("Model Loss")
+plt.show()
+
+# Prediction and evaluation on test set
+y_pred = model.predict(X_test)
+y_pred_classes = [1 if prob > 0.5 else 0 for prob in y_pred]
+
+cnf_matrix = confusion_matrix(y_test, y_pred_classes)
+tn, fp, fn, tp = cnf_matrix.ravel()
+
+bacc = (tp / (tp + fn) + tn / (tn + fp)) / 2
+pre = tp / (tp + fp)
+rec = tp / (tp + fn)
+f1 = 2 * pre * rec / (pre + rec)
+mcc = (tp * tn - fp * fn) / math.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn))
+auc = roc_auc_score(y_test, y_pred)
+
+print("Balanced Accuracy:", bacc)
+print("Precision:", pre)
+print("Recall:", rec)
+print("F1 Score:", f1)
+print("MCC:", mcc)
+print("AUC:", auc)
+
+
+# # Required imports
+# import tensorflow as tf
+# from tensorflow.keras.models import Sequential
+# from tensorflow.keras.layers import Dense, Dropout, BatchNormalization
+# from tensorflow.keras.optimizers import Adam
+# from sklearn.model_selection import train_test_split
+# from sklearn.preprocessing import MinMaxScaler
+# from imblearn.over_sampling import SMOTE
+# from keras_tuner import HyperParameters, BayesianOptimization
+
+# # Data splitting
+# X_train, X_temp, y_train, y_temp = train_test_split(x, y, test_size=0.3, random_state=123)
+# X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.5, random_state=123)
+
+# # Standardize features
+# scaler = MinMaxScaler()
+# X_train = scaler.fit_transform(X_train)
+# X_val = scaler.transform(X_val)
+# X_test = scaler.transform(X_test)
+
+# # Apply SMOTE for synthetic sampling of the minority class
+# smote = SMOTE(random_state=42, k_neighbors=3)
+# X_train_resampled, y_train_resampled = smote.fit_resample(X_train, y_train)
+
+# # Define hypermodel function for Keras Tuner
+# def build_model(hp):
+#     model = Sequential()
+#     model.add(Dense(units=hp.Int('units_input', min_value=500, max_value=2000, step=500),
+#                     activation='relu', input_dim=X_train_resampled.shape[1]))
+#     model.add(BatchNormalization())
+#     model.add(Dropout(hp.Float('dropout_rate_input', min_value=0.3, max_value=0.75, step=0.1)))
+
+#     # Hidden layer
+#     model.add(Dense(units=hp.Int('units_hidden', min_value=100, max_value=500, step=100),
+#                     activation='relu'))
+#     model.add(BatchNormalization())
+#     model.add(Dropout(hp.Float('dropout_rate_hidden', min_value=0.3, max_value=0.75, step=0.1)))
+
+#     # Output layer
+#     model.add(Dense(1, activation='sigmoid'))
+
+#     # Compile model
+#     model.compile(optimizer=Adam(learning_rate=hp.Choice('learning_rate', values=[0.01, 0.001, 0.0001, 0.00001])),
+#                   loss='binary_crossentropy',
+#                   metrics=['accuracy'])
+#     return model
+
+# # Initialize HyperParameters and Tuner
+# hp = HyperParameters()
+# tuner = BayesianOptimization(
+#     build_model,
+#     objective='val_loss',
+#     max_trials=10,
+#     directory='hyperparameter_tuning',
+#     project_name='model_optimization'
+# )
+
+# # Perform hyperparameter search
+# tuner.search(X_train_resampled, y_train_resampled, 
+#              epochs=50, 
+#              validation_data=(X_val, y_val), 
+#              callbacks=[tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5)],
+#              batch_size=hp.Choice('batch_size', values=[16, 32, 64, 128, 256, 512])
+# )
+
+# # Retrieve the best model
+# best_model = tuner.get_best_models(num_models=1)[0]
+# best_hp = tuner.get_best_hyperparameters(num_trials=1)[0]
+
+# # Print the best hyperparameters
+# print("Best Hyperparameters:", best_hp.values)
+
+
+# Required imports
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Dropout, BatchNormalization
+from tensorflow.keras.optimizers import Adam
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler
+from imblearn.over_sampling import SMOTE
+from keras_tuner import HyperParameters, BayesianOptimization
+
+# Data splitting
+X_train, X_temp, y_train, y_temp = train_test_split(x, y, test_size=0.3, random_state=123)
+X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.5, random_state=123)
+
+# Standardize features
+scaler = MinMaxScaler()
+X_train = scaler.fit_transform(X_train)
+X_val = scaler.transform(X_val)
+X_test = scaler.transform(X_test)
+
+# Apply SMOTE for synthetic sampling of the minority class
+smote = SMOTE(random_state=42, k_neighbors=3)
+X_train_resampled, y_train_resampled = smote.fit_resample(X_train, y_train)
+
+# Define hypermodel function for Keras Tuner
+def build_model(hp):
+    model = Sequential()
+    model.add(Dense(units=hp.Int('units_input', min_value=500, max_value=2000, step=500),
+                      activation='relu', input_dim=X_train_resampled.shape[1]))
+    model.add(BatchNormalization())
+    model.add(Dropout(hp.Float('dropout_rate_input', min_value=0.3, max_value=0.75, step=0.1)))
+
+    # Hidden layer (you can adjust the number of hidden layers)
+    model.add(Dense(units=hp.Int('units_hidden', min_value=100, max_value=500, step=100),
+                      activation='relu'))
+    model.add(BatchNormalization())
+    model.add(Dropout(hp.Float('dropout_rate_hidden', min_value=0.3, max_value=0.75, step=0.1)))
+
+    # Output layer
+    model.add(Dense(1, activation='sigmoid'))
+
+    # Compile model
+    model.compile(optimizer=Adam(learning_rate=hp.Choice('learning_rate', values=[0.01, 0.001, 0.0001, 0.00001])),
+                  loss='binary_crossentropy',
+                  metrics=['accuracy'])
+    return model
+
+# Initialize HyperParameters and Tuner
+hp = HyperParameters()
+tuner = BayesianOptimization(
+    build_model,
+    objective='val_loss',
+    max_trials=10,  # Adjust max_trials based on computational resources
+    directory='hyperparameter_tuning',
+    project_name='model_optimization'
+)
+
+# Perform hyperparameter search
+tuner.search(X_train_resampled, y_train_resampled,
+              epochs=50,  # Adjust epochs based on validation performance
+              validation_data=(X_val, y_val),
+              callbacks=[tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5)],
+              batch_size=hp.Choice('batch_size', values=[16, 32, 64, 128, 256, 512]))
+
+# Retrieve the best model
+best_model = tuner.get_best_models(num_models=1)[0]
+best_hp = tuner.get_best_hyperparameters(num_trials=1)[0]
+
+# Print the best hyperparameters
+print("Best Hyperparameters:", best_hp.values)
+
+# While these hyperparameter ranges were provided, it's generally
+# recommended to use the results from the hyperparameter tuning
+# and consider refining them based on the search results.
+# You can experiment with these values and potentially explore
+# a wider range based on your problem and dataset.
+# batch_sizes = [16, 32, 
+
+
+###########################MODEL TRAINING USING HYPERPARAMTERS OF KERASTUNER
+
+
+
+# Assuming you have the best hyperparameters from tuning
+best_hp = tuner.get_best_hyperparameters(num_trials=1)[0]
+
+# Re-create the model with best hyperparameters
+best_model = Sequential([
+    Dense(units=best_hp.get('units_input'), activation='relu', input_dim=X_train_resampled.shape[1]),
+    BatchNormalization(),
+    Dropout(best_hp.get('dropout_rate_input')),
+    Dense(units=500, activation='relu', kernel_initializer='glorot_uniform'),
+    BatchNormalization(),
+    Dropout(best_hp.get('dropout_rate_input')),
+    Dense(units=10, activation='relu', kernel_initializer='glorot_uniform'),
+    BatchNormalization(),
+    Dropout(best_hp.get('dropout_rate_input')),
+    # ... other layers with best hyperparameters ...
+    Dense(1, activation='sigmoid')
+])
+
+
+# Compile the model with the best learning rate
+best_model.compile(optimizer=Adam(learning_rate=best_hp.get('learning_rate')),
+                  loss='binary_crossentropy',
+                  metrics=['accuracy'])
+
+# Train the model with the best hyperparameters
+best_model.fit(X_train_resampled, y_train_resampled,
+              epochs=50,  # Adjust epochs based on validation performance
+              batch_size=512,
+              validation_data=(X_val, y_val),
+              callbacks=[tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5)])
+
+# Evaluate on test data
+from sklearn.metrics import precision_score, recall_score, roc_auc_score, confusion_matrix, ConfusionMatrixDisplay
+
+test_loss, test_accuracy =best_model.evaluate(X_test, y_test)
+print("Test Accuracy:", test_accuracy)
+print("Test Loss:", test_loss)
+
+# Evaluate on test data
+test_loss, test_accuracy = best_model.evaluate(X_test, y_test)
+print("Test Accuracy:", test_accuracy)
+print("Test Loss:", test_loss)
+
+# Predict probabilities and binary classes on the test set
+y_pred_prob = best_model.predict(X_test).flatten()
+y_pred = (y_pred_prob > 0.5).astype(int)  # Convert probabilities to binary predictions (0 or 1)
+
+# Calculate precision, recall, and AUC
+precision = precision_score(y_test, y_pred)
+recall = recall_score(y_test, y_pred)
+auc_score = roc_auc_score(y_test, y_pred_prob)
+
+print("Precision:", precision)
+print("Recall:", recall)
+print("AUC Score:", auc_score)
+# Confusion Matrix
+conf_matrix = confusion_matrix(y_test, y_pred)
+ConfusionMatrixDisplay(conf_matrix).plot(cmap='Blues')
+plt.title("Confusion Matrix")
+plt.show()
+
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler
+from imblearn.over_sampling import SMOTE
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, BatchNormalization, Dropout
+from tensorflow.keras.callbacks import EarlyStopping
+import tensorflow as tf
+from imblearn.under_sampling import RandomUnderSampler
+from imblearn.combine import SMOTEENN, SMOTETomek
+from imblearn.over_sampling import ADASYN
+
+# Splitting data into train, validation, and test sets
+X_train, X_temp, y_train, y_temp = train_test_split(x, y, test_size=0.3, random_state=123)
+X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.5, random_state=123)
+
+# Standardize features using MinMaxScaler
+scaler = MinMaxScaler()
+X_train = scaler.fit_transform(X_train)
+X_val = scaler.transform(X_val)
+X_test = scaler.transform(X_test)
+
+# Apply SMOTE only to the training data to address class imbalance
+smote = SMOTE(random_state=42, k_neighbors=3)
+X_train_resampled, y_train_resampled = smote.fit_resample(X_train, y_train)
+
+# Define ranges for hyperparameters
+batch_sizes = [16, 32, 64, 128, 256, 512]
+epoch_options = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+learning_rates = [0.01, 0.001, 0.0001, 0.00001]
+
+best_config = None
+best_val_loss = float('inf')
+
+# Hyperparameter tuning loop
+for batch_size in batch_sizes:
+    for epochs in epoch_options:
+        for learning_rate in learning_rates:
+            # Define model architecture
+            model = Sequential([
+                Dense(units=2000, input_dim=X_train_resampled.shape[1], activation='relu', kernel_initializer='glorot_uniform'),
+                BatchNormalization(),
+                Dropout(0.5),  # Reduced dropout rate for better regularization
+                Dense(units=500, activation='relu', kernel_initializer='glorot_uniform'),
+                BatchNormalization(),
+                Dropout(0.5),
+                Dense(units=10, activation='relu', kernel_initializer='glorot_uniform'),
+                BatchNormalization(),
+                Dropout(0.5),
+                Dense(1, activation='sigmoid')
+            ])
+
+            # Compile model with dynamic learning rate
+            optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+            model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=['accuracy'])
+
+            # Add early stopping to avoid overfitting
+            early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
+
+            # Train model
+            history = model.fit(X_train_resampled, y_train_resampled,
+                                epochs=epochs,
+                                batch_size=batch_size,
+                                validation_data=(X_val, y_val),
+                                callbacks=[early_stopping],
+                                verbose=0)
+
+            # Evaluate validation loss
+            val_loss = min(history.history['val_loss'])
+
+            # Update best configuration if validation loss improves
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                best_config = {
+                    'batch_size': batch_size,
+                    'epochs': epochs,
+                    'learning_rate': learning_rate
+                }
+
+print("Best Configuration:", best_config)
+print("Best Validation Loss:", best_val_loss)
+
+# Final Model Training with Best Configuration
+# Reinitialize model with best hyperparameters
+final_model = Sequential([
+    Dense(units=2000, input_dim=X_train_resampled.shape[1], activation='relu', kernel_initializer='glorot_uniform'),
+    BatchNormalization(),
+    Dropout(0.4),
+    Dense(units=1000, activation='relu', kernel_initializer='glorot_uniform'),
+    BatchNormalization(),
+    Dropout(0.4),
+    Dense(units=500, activation='relu', kernel_initializer='glorot_uniform'),
+    BatchNormalization(),
+    Dropout(0.4),
+    Dense(units=10, activation='relu', kernel_initializer='glorot_uniform'),
+    BatchNormalization(),
+    Dropout(0.4),
+    Dense(1, activation='sigmoid')
+])
+
+# Compile final model
+final_optimizer = tf.keras.optimizers.Adam(learning_rate=best_config['learning_rate'])
+final_model.compile(optimizer=final_optimizer, loss='binary_crossentropy', metrics=['accuracy'])
+
+# Train final model with best hyperparameters
+final_model.fit(X_train_resampled, y_train_resampled,
+                epochs=best_config['epochs'],
+                batch_size=best_config['batch_size'],
+                validation_data=(X_val, y_val),
+                callbacks=[early_stopping],
+                verbose=1)
+
+# Evaluate on test data
+test_loss, test_accuracy = final_model.evaluate(X_test, y_test)
+print("Test Accuracy:", test_accuracy)
+print("Test Loss:", test_loss)
+
+
+# Predict probabilities and binary classes on the test set
+y_pred_prob = final_model.predict(X_test).flatten()
+y_pred = (y_pred_prob > 0.5).astype(int)  # Convert probabilities to binary predictions (0 or 1)
+
+# Calculate precision, recall, and AUC
+precision = precision_score(y_test, y_pred)
+recall = recall_score(y_test, y_pred)
+auc_score = roc_auc_score(y_test, y_pred_prob)
+
+print("Precision:", precision)
+print("Recall:", recall)
+print("AUC Score:", auc_score)
+# Confusion Matrix
+conf_matrix = confusion_matrix(y_test, y_pred)
+ConfusionMatrixDisplay(conf_matrix).plot(cmap='Blues')
+plt.title("Confusion Matrix")
+plt.show()
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler
+from imblearn.over_sampling import SMOTE
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, BatchNormalization, Dropout
+from tensorflow.keras.callbacks import EarlyStopping
+import tensorflow as tf
+from imblearn.under_sampling import RandomUnderSampler
+from imblearn.combine import SMOTEENN, SMOTETomek
+from imblearn.over_sampling import ADASYN
+
+
+# Splitting data into train, validation, and test sets
+X_train, X_temp, y_train, y_temp = train_test_split(x, y, test_size=0.3, random_state=123)
+X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.5, random_state=123)
+
+# Standardize features using MinMaxScaler
+scaler = MinMaxScaler()
+X_train = scaler.fit_transform(X_train)
+X_val = scaler.transform(X_val)
+X_test = scaler.transform(X_test)
+
+# Apply Random Over-Sampling (ROS)
+ros = RandomOverSampler(random_state=42)
+X_train_resampled, y_train_resampled = ros.fit_resample(X_train, y_train)
+
+
+# Define ranges for hyperparameters
+batch_sizes = [16, 32, 64, 128, 256, 512]
+epoch_options = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+learning_rates = [0.01, 0.001, 0.0001, 0.00001]
+
+best_config = None
+best_val_loss = float('inf')
+
+# Hyperparameter tuning loop
+for batch_size in batch_sizes:
+    for epochs in epoch_options:
+        for learning_rate in learning_rates:
+            # Define model architecture
+            model = Sequential([
+                Dense(units=2000, input_dim=X_train_resampled.shape[1], activation='relu', kernel_initializer='glorot_uniform'),
+                BatchNormalization(),
+                Dropout(0.5),  # Reduced dropout rate for better regularization
+                Dense(units=500, activation='relu', kernel_initializer='glorot_uniform'),
+                BatchNormalization(),
+                Dropout(0.5),
+                Dense(units=10, activation='relu', kernel_initializer='glorot_uniform'),
+                BatchNormalization(),
+                Dropout(0.5),
+                Dense(1, activation='sigmoid')
+            ])
+
+            # Compile model with dynamic learning rate
+            optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+            model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=['accuracy'])
+
+            # Add early stopping to avoid overfitting
+            early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
+
+            # Train model
+            history = model.fit(X_train_resampled, y_train_resampled,
+                                epochs=epochs,
+                                batch_size=batch_size,
+                                validation_data=(X_val, y_val),
+                                callbacks=[early_stopping],
+                                verbose=0)
+
+            # Evaluate validation loss
+            val_loss = min(history.history['val_loss'])
+
+            # Update best configuration if validation loss improves
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                best_config = {
+                    'batch_size': batch_size,
+                    'epochs': epochs,
+                    'learning_rate': learning_rate
+                }
+
+print("Best Configuration:", best_config)
+print("Best Validation Loss:", best_val_loss)
+
+# Final Model Training with Best Configuration
+# Reinitialize model with best hyperparameters
+final_model = Sequential([
+    Dense(units=2000, input_dim=X_train_resampled.shape[1], activation='relu', kernel_initializer='glorot_uniform'),
+    BatchNormalization(),
+    Dropout(0.5),
+    Dense(units=500, activation='relu', kernel_initializer='glorot_uniform'),
+    BatchNormalization(),
+    Dropout(0.5),
+    Dense(units=10, activation='relu', kernel_initializer='glorot_uniform'),
+    BatchNormalization(),
+    Dropout(0.5),
+    Dense(1, activation='sigmoid')
+])
+
+# Compile final model
+final_optimizer = tf.keras.optimizers.Adam(learning_rate=best_config['learning_rate'])
+final_model.compile(optimizer=final_optimizer, loss='binary_crossentropy', metrics=['accuracy'])
+
+# Train final model with best hyperparameters
+final_model.fit(X_train_resampled, y_train_resampled,
+                epochs=best_config['epochs'],
+                batch_size=best_config['batch_size'],
+                validation_data=(X_val, y_val),
+                callbacks=[early_stopping],
+                verbose=1)
+
+# Evaluate on test data
+test_loss, test_accuracy = final_model.evaluate(X_test, y_test)
+print("Test Accuracy:", test_accuracy)
+print("Test Loss:", test_loss)
+
+# Evaluate on test data
+test_loss, test_accuracy = final_model.evaluate(X_test, y_test)
+print("Test Accuracy:", test_accuracy)
+print("Test Loss:", test_loss)
+
+# Predict probabilities and binary classes on the test set
+y_pred_prob = final_model.predict(X_test).flatten()
+y_pred = (y_pred_prob > 0.5).astype(int)  # Convert probabilities to binary predictions (0 or 1)
+
+# Calculate precision, recall, and AUC
+precision = precision_score(y_test, y_pred)
+recall = recall_score(y_test, y_pred)
+auc_score = roc_auc_score(y_test, y_pred_prob)
+
+print("Precision:", precision)
+print("Recall:", recall)
+print("AUC Score:", auc_score)
+# Confusion Matrix
+conf_matrix = confusion_matrix(y_test, y_pred)
+ConfusionMatrixDisplay(conf_matrix).plot(cmap='Blues')
+plt.title("Confusion Matrix")
+plt.show()
+
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler
+from imblearn.over_sampling import SMOTE
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, BatchNormalization, Dropout
+from tensorflow.keras.callbacks import EarlyStopping
+import tensorflow as tf
+from imblearn.under_sampling import RandomUnderSampler
+from imblearn.combine import SMOTEENN, SMOTETomek
+from imblearn.over_sampling import ADASYN
+
+
+# Splitting data into train, validation, and test sets
+X_train, X_temp, y_train, y_temp = train_test_split(x, y, test_size=0.3, random_state=123)
+X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.5, random_state=123)
+
+# Standardize features using MinMaxScaler
+scaler = MinMaxScaler()
+X_train = scaler.fit_transform(X_train)
+X_val = scaler.transform(X_val)
+X_test = scaler.transform(X_test)
+
+# Apply ADASYN
+adasyn = ADASYN(n_neighbors=3, random_state=42)  # Set n_neighbors to a value less than or equal to the minimum class count
+X_train_resampled, y_train_resampled = adasyn.fit_resample(X_train, y_train)
+
+
+
+# Define ranges for hyperparameters
+batch_sizes = [16, 32, 64, 128, 256, 512]
+epoch_options = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+learning_rates = [0.01, 0.001, 0.0001, 0.00001]
+
+best_config = None
+best_val_loss = float('inf')
+
+# Hyperparameter tuning loop
+for batch_size in batch_sizes:
+    for epochs in epoch_options:
+        for learning_rate in learning_rates:
+            # Define model architecture
+            model = Sequential([
+                Dense(units=2000, input_dim=X_train_resampled.shape[1], activation='relu', kernel_initializer='glorot_uniform'),
+                BatchNormalization(),
+                Dropout(0.5),  # Reduced dropout rate for better regularization
+                Dense(units=500, activation='relu', kernel_initializer='glorot_uniform'),
+                BatchNormalization(),
+                Dropout(0.5),
+                Dense(units=10, activation='relu', kernel_initializer='glorot_uniform'),
+                BatchNormalization(),
+                Dropout(0.5),
+                Dense(1, activation='sigmoid')
+            ])
+
+            # Compile model with dynamic learning rate
+            optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+            model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=['accuracy'])
+
+            # Add early stopping to avoid overfitting
+            early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
+
+            # Train model
+            history = model.fit(X_train_resampled, y_train_resampled,
+                                epochs=epochs,
+                                batch_size=batch_size,
+                                validation_data=(X_val, y_val),
+                                callbacks=[early_stopping],
+                                verbose=0)
+
+            # Evaluate validation loss
+            val_loss = min(history.history['val_loss'])
+
+            # Update best configuration if validation loss improves
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                best_config = {
+                    'batch_size': batch_size,
+                    'epochs': epochs,
+                    'learning_rate': learning_rate
+                }
+
+print("Best Configuration:", best_config)
+print("Best Validation Loss:", best_val_loss)
+
+# Final Model Training with Best Configuration
+# Reinitialize model with best hyperparameters
+final_model = Sequential([
+    Dense(units=2000, input_dim=X_train_resampled.shape[1], activation='relu', kernel_initializer='glorot_uniform'),
+    BatchNormalization(),
+    Dropout(0.5),
+    Dense(units=500, activation='relu', kernel_initializer='glorot_uniform'),
+    BatchNormalization(),
+    Dropout(0.5),
+    Dense(units=10, activation='relu', kernel_initializer='glorot_uniform'),
+    BatchNormalization(),
+    Dropout(0.5),
+    Dense(1, activation='sigmoid')
+])
+
+# Compile final model
+final_optimizer = tf.keras.optimizers.Adam(learning_rate=best_config['learning_rate'])
+final_model.compile(optimizer=final_optimizer, loss='binary_crossentropy', metrics=['accuracy'])
+
+# Train final model with best hyperparameters
+final_model.fit(X_train_resampled, y_train_resampled,
+                epochs=best_config['epochs'],
+                batch_size=best_config['batch_size'],
+                validation_data=(X_val, y_val),
+                callbacks=[early_stopping],
+                verbose=1)
+
+# Evaluate on test data
+test_loss, test_accuracy = final_model.evaluate(X_test, y_test)
+print("Test Accuracy:", test_accuracy)
+print("Test Loss:", test_loss)
+# Calculate precision, recall, and AUC
+precision = precision_score(y_test, y_pred)
+recall = recall_score(y_test, y_pred)
+auc_score = roc_auc_score(y_test, y_pred_prob)
+
+print("Precision:", precision)
+print("Recall:", recall)
+print("AUC Score:", auc_score)
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler
+from imblearn.over_sampling import SMOTE
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, BatchNormalization, Dropout
+from tensorflow.keras.callbacks import EarlyStopping
+import tensorflow as tf
+from imblearn.under_sampling import RandomUnderSampler
+from imblearn.combine import SMOTEENN, SMOTETomek
+from imblearn.over_sampling import ADASYN
+
+
+# Splitting data into train, validation, and test sets
+X_train, X_temp, y_train, y_temp = train_test_split(x, y, test_size=0.3, random_state=123)
+X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.5, random_state=123)
+
+# Standardize features using MinMaxScaler
+scaler = MinMaxScaler()
+X_train = scaler.fit_transform(X_train)
+X_val = scaler.transform(X_val)
+X_test = scaler.transform(X_test)
+
+# Apply Random Under-Sampling (RUS)
+rus = RandomUnderSampler(random_state=42)
+X_train_resampled, y_train_resampled = rus.fit_resample(X_train, y_train)
+
+# Set class weights for minority class
+class_weights = {0: 5, 1: 1}  # Adjust weights based on dataset
+
+
+
+# Define ranges for hyperparameters
+batch_sizes = [16, 32, 64, 128, 256, 512]
+epoch_options = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+learning_rates = [0.01, 0.001, 0.0001, 0.00001]
+
+best_config = None
+best_val_loss = float('inf')
+
+# Hyperparameter tuning loop
+for batch_size in batch_sizes:
+    for epochs in epoch_options:
+        for learning_rate in learning_rates:
+            # Define model architecture
+            model = Sequential([
+                Dense(units=2000, input_dim=X_train_resampled.shape[1], activation='relu', kernel_initializer='glorot_uniform'),
+                BatchNormalization(),
+                Dropout(0.5),  # Reduced dropout rate for better regularization
+                Dense(units=500, activation='relu', kernel_initializer='glorot_uniform'),
+                BatchNormalization(),
+                Dropout(0.5),
+                Dense(units=10, activation='relu', kernel_initializer='glorot_uniform'),
+                BatchNormalization(),
+                Dropout(0.5),
+                Dense(1, activation='sigmoid')
+            ])
+
+            # Compile model with dynamic learning rate
+            optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+            model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=['accuracy'])
+
+            # Add early stopping to avoid overfitting
+            early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
+
+            # Train model
+            history = model.fit(X_train_resampled, y_train_resampled,
+                                epochs=epochs,
+                                batch_size=batch_size,
+                                validation_data=(X_val, y_val),
+                                callbacks=[early_stopping],
+                                class_weight=class_weights,  # Add this line
+                                verbose=0)
+
+            # Evaluate validation loss
+            val_loss = min(history.history['val_loss'])
+
+            # Update best configuration if validation loss improves
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                best_config = {
+                    'batch_size': batch_size,
+                    'epochs': epochs,
+                    'learning_rate': learning_rate
+                }
+
+print("Best Configuration:", best_config)
+print("Best Validation Loss:", best_val_loss)
+
+# Final Model Training with Best Configuration
+# Reinitialize model with best hyperparameters
+final_model = Sequential([
+    Dense(units=2000, input_dim=X_train_resampled.shape[1], activation='relu', kernel_initializer='glorot_uniform'),
+    BatchNormalization(),
+    Dropout(0.5),
+    Dense(units=500, activation='relu', kernel_initializer='glorot_uniform'),
+    BatchNormalization(),
+    Dropout(0.5),
+    Dense(units=10, activation='relu', kernel_initializer='glorot_uniform'),
+    BatchNormalization(),
+    Dropout(0.5),
+    Dense(1, activation='sigmoid')
+])
+
+# Compile final model
+final_optimizer = tf.keras.optimizers.Adam(learning_rate=best_config['learning_rate'])
+final_model.compile(optimizer=final_optimizer, loss='binary_crossentropy', metrics=['accuracy'])
+
+# Train final model with best hyperparameters
+final_model.fit(X_train_resampled, y_train_resampled,
+                epochs=best_config['epochs'],
+                batch_size=best_config['batch_size'],
+                validation_data=(X_val, y_val),
+                callbacks=[early_stopping],
+                class_weight=class_weights,  # Add this line
+                verbose=1)
+
+# Evaluate on test data
+test_loss, test_accuracy = final_model.evaluate(X_test, y_test)
+print("Test Accuracy:", test_accuracy)
+print("Test Loss:", test_loss)
+# Calculate precision, recall, and AUC
+precision = precision_score(y_test, y_pred)
+recall = recall_score(y_test, y_pred)
+auc_score = roc_auc_score(y_test, y_pred_prob)
+
+print("Precision:", precision)
+print("Recall:", recall)
+print("AUC Score:", auc_score)
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler
+from imblearn.over_sampling import SMOTE
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, BatchNormalization, Dropout
+from tensorflow.keras.callbacks import EarlyStopping
+import tensorflow as tf
+from imblearn.under_sampling import RandomUnderSampler
+from imblearn.combine import SMOTEENN, SMOTETomek
+from imblearn.over_sampling import ADASYN
+from sklearn.metrics import precision_score, recall_score, roc_auc_score, confusion_matrix, ConfusionMatrixDisplay
+
+
+# Splitting data into train, validation, and test sets
+X_train, X_temp, y_train, y_temp = train_test_split(x, y, test_size=0.3, random_state=123)
+X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.5, random_state=123)
+
+# Standardize features using MinMaxScaler
+scaler = MinMaxScaler()
+X_train = scaler.fit_transform(X_train)
+X_val = scaler.transform(X_val)
+X_test = scaler.transform(X_test)
+
+ros = RandomOverSampler(random_state=42)
+X_train_resampled, y_train_resampled = ros.fit_resample(X_train, y_train)
+
+# Set class weights for minority class
+class_weights = {0: 5, 1: 1}
+
+
+
+# Define ranges for hyperparameters
+batch_sizes = [16, 32, 64, 128, 256, 512]
+epoch_options = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+learning_rates = [0.01, 0.001, 0.0001, 0.00001]
+
+best_config = None
+best_val_loss = float('inf')
+
+# Hyperparameter tuning loop
+for batch_size in batch_sizes:
+    for epochs in epoch_options:
+        for learning_rate in learning_rates:
+            # Define model architecture
+            model = Sequential([
+                Dense(units=2000, input_dim=X_train_resampled.shape[1], activation='relu', kernel_initializer='glorot_uniform'),
+                BatchNormalization(),
+                Dropout(0.5),  # Reduced dropout rate for better regularization
+                Dense(units=500, activation='relu', kernel_initializer='glorot_uniform'),
+                BatchNormalization(),
+                Dropout(0.5),
+                Dense(units=10, activation='relu', kernel_initializer='glorot_uniform'),
+                BatchNormalization(),
+                Dropout(0.5),
+                Dense(1, activation='sigmoid')
+            ])
+
+            # Compile model with dynamic learning rate
+            optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+            model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=['accuracy'])
+
+            # Add early stopping to avoid overfitting
+            early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
+
+            # Train model
+            history = model.fit(X_train_resampled, y_train_resampled,
+                                epochs=epochs,
+                                batch_size=batch_size,
+                                validation_data=(X_val, y_val),
+                                callbacks=[early_stopping],
+                                class_weight=class_weights,  # Add this line
+                                verbose=0)
+
+            # Evaluate validation loss
+            val_loss = min(history.history['val_loss'])
+
+            # Update best configuration if validation loss improves
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                best_config = {
+                    'batch_size': batch_size,
+                    'epochs': epochs,
+                    'learning_rate': learning_rate
+                }
+
+print("Best Configuration:", best_config)
+print("Best Validation Loss:", best_val_loss)
+
+# Final Model Training with Best Configuration
+# Reinitialize model with best hyperparameters
+final_model = Sequential([
+    Dense(units=2000, input_dim=X_train_resampled.shape[1], activation='relu', kernel_initializer='glorot_uniform'),
+    BatchNormalization(),
+    Dropout(0.5),
+    Dense(units=500, activation='relu', kernel_initializer='glorot_uniform'),
+    BatchNormalization(),
+    Dropout(0.5),
+    Dense(units=10, activation='relu', kernel_initializer='glorot_uniform'),
+    BatchNormalization(),
+    Dropout(0.5),
+    Dense(1, activation='sigmoid')
+])
+
+# Compile final model
+final_optimizer = tf.keras.optimizers.Adam(learning_rate=best_config['learning_rate'])
+final_model.compile(optimizer=final_optimizer, loss='binary_crossentropy', metrics=['accuracy'])
+
+# Train final model with best hyperparameters
+final_model.fit(X_train_resampled, y_train_resampled,
+                epochs=best_config['epochs'],
+                batch_size=best_config['batch_size'],
+                validation_data=(X_val, y_val),
+                callbacks=[early_stopping],
+                class_weight=class_weights,  # Add this line
+                verbose=1)
+
+# Evaluate on test data
+test_loss, test_accuracy = final_model.evaluate(X_test, y_test)
+print("Test Accuracy:", test_accuracy)
+print("Test Loss:", test_loss)
+
+# Calculate precision, recall, and AUC
+precision = precision_score(y_test, y_pred)
+recall = recall_score(y_test, y_pred)
+auc_score = roc_auc_score(y_test, y_pred_prob)
+
+print("Precision:", precision)
+print("Recall:", recall)
+print("AUC Score:", auc_score)
+# Confusion Matrix
+conf_matrix = confusion_matrix(y_test, y_pred)
+ConfusionMatrixDisplay(conf_matrix).plot(cmap='Blues')
+plt.title("Confusion Matrix")
+plt.show()
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler
+from imblearn.over_sampling import SMOTE
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, BatchNormalization, Dropout
+from tensorflow.keras.callbacks import EarlyStopping
+import tensorflow as tf
+from imblearn.under_sampling import RandomUnderSampler
+from imblearn.combine import SMOTEENN, SMOTETomek
+from imblearn.over_sampling import ADASYN
+from sklearn.metrics import precision_score, recall_score, roc_auc_score, confusion_matrix, ConfusionMatrixDisplay
+
+
+
+# Splitting data into train, validation, and test sets
+X_train, X_temp, y_train, y_temp = train_test_split(x, y, test_size=0.3, random_state=123)
+X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.5, random_state=123)
+
+# Standardize features using MinMaxScaler
+scaler = MinMaxScaler()
+X_train = scaler.fit_transform(X_train)
+X_val = scaler.transform(X_val)
+X_test = scaler.transform(X_test)
+
+# Apply SMOTE
+smote = SMOTE(random_state=42, k_neighbors=3)
+X_train_resampled, y_train_resampled = smote.fit_resample(X_train, y_train)
+
+# Set class weights for minority class
+class_weights = {0: 5, 1: 1}
+
+
+# Define ranges for hyperparameters
+batch_sizes = [16, 32, 64, 128, 256, 512]
+epoch_options = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+learning_rates = [0.01, 0.001, 0.0001, 0.00001]
+
+best_config = None
+best_val_loss = float('inf')
+
+# Hyperparameter tuning loop
+for batch_size in batch_sizes:
+    for epochs in epoch_options:
+        for learning_rate in learning_rates:
+            # Define model architecture
+            model =Sequential([
+                Dense(units=2000, input_dim=X_train_resampled.shape[1], activation='relu', kernel_initializer='glorot_uniform'),
+                BatchNormalization(),
+                Dropout(0.5),  # Reduced dropout rate for better regularization
+                Dense(units=500, activation='relu', kernel_initializer='glorot_uniform'),
+                BatchNormalization(),
+                Dropout(0.5),
+                Dense(units=10, activation='relu', kernel_initializer='glorot_uniform'),
+                BatchNormalization(),
+                Dropout(0.5),
+                Dense(1, activation='sigmoid')
+            ])
+
+            # Compile model with dynamic learning rate
+            optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+            model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=['accuracy'])
+
+            # Add early stopping to avoid overfitting
+            early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
+
+            # Train model
+            history = model.fit(X_train_resampled, y_train_resampled,
+                                epochs=epochs,
+                                batch_size=batch_size,
+                                validation_data=(X_val, y_val),
+                                callbacks=[early_stopping],
+                                class_weight=class_weights,  # Add this line
+                                verbose=0)
+
+            # Evaluate validation loss
+            val_loss = min(history.history['val_loss'])
+
+            # Update best configuration if validation loss improves
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                best_config = {
+                    'batch_size': batch_size,
+                    'epochs': epochs,
+                    'learning_rate': learning_rate
+                }
+
+print("Best Configuration:", best_config)
+print("Best Validation Loss:", best_val_loss)
+
+# Final Model Training with Best Configuration
+# Reinitialize model with best hyperparameters
+final_model =Sequential([
+                Dense(units=2000, input_dim=X_train_resampled.shape[1], activation='relu', kernel_initializer='glorot_uniform'),
+                BatchNormalization(),
+                Dropout(0.5),  # Reduced dropout rate for better regularization
+                Dense(units=500, activation='relu', kernel_initializer='glorot_uniform'),
+                BatchNormalization(),
+                Dropout(0.5),
+                Dense(units=10, activation='relu', kernel_initializer='glorot_uniform'),
+                BatchNormalization(),
+                Dropout(0.5),
+                Dense(1, activation='sigmoid')
+            ])
+
+# Compile final model
+final_optimizer = tf.keras.optimizers.Adam(learning_rate=best_config['learning_rate'])
+final_model.compile(optimizer=final_optimizer, loss='binary_crossentropy', metrics=['accuracy'])
+
+# Train final model with best hyperparameters
+final_model.fit(X_train_resampled, y_train_resampled,
+                epochs=best_config['epochs'],
+                batch_size=best_config['batch_size'],
+                validation_data=(X_val, y_val),
+                callbacks=[early_stopping],
+                class_weight=class_weights,  # Add this line
+                verbose=1)
+
+# Evaluate on test data
+test_loss, test_accuracy = final_model.evaluate(X_test, y_test)
+print("Test Accuracy:", test_accuracy)
+print("Test Loss:", test_loss)
+# Calculate precision, recall, and AUC
+precision = precision_score(y_test, y_pred)
+recall = recall_score(y_test, y_pred)
+auc_score = roc_auc_score(y_test, y_pred_prob)
+
+print("Precision:", precision)
+print("Recall:", recall)
+print("AUC Score:", auc_score)
+# Confusion Matrix
+conf_matrix = confusion_matrix(y_test, y_pred)
+ConfusionMatrixDisplay(conf_matrix).plot(cmap='Blues')
+plt.title("Confusion Matrix")
+plt.show()
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler
+from imblearn.over_sampling import ADASYN
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, BatchNormalization, Dropout
+from tensorflow.keras.callbacks import EarlyStopping
+import tensorflow as tf
+
+# Splitting data into train, validation, and test sets
+X_train, X_temp, y_train, y_temp = train_test_split(x, y, test_size=0.3, random_state=123)
+X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.5, random_state=123)
+
+# Standardize features using MinMaxScaler
+scaler = MinMaxScaler()
+X_train = scaler.fit_transform(X_train)
+X_val = scaler.transform(X_val)
+X_test = scaler.transform(X_test)
+
+# Apply ADASYN
+adasyn = ADASYN(n_neighbors=3, random_state=42)
+X_train_resampled, y_train_resampled = adasyn.fit_resample(X_train, y_train)
+
+# Set class weights for minority class
+class_weights = {0: 5, 1: 1}
+
+# Define ranges for hyperparameters
+batch_sizes = [16, 32, 64, 128, 256, 512]
+epoch_options = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+learning_rates = [0.01, 0.001, 0.0001, 0.00001]
+
+best_config = None
+best_val_loss = float('inf')
+
+# Hyperparameter tuning loop
+for batch_size in batch_sizes:
+    for epochs in epoch_options:
+        for learning_rate in learning_rates:
+            # Define model architecture
+            model = Sequential([
+                Dense(units=2000, input_dim=X_train_resampled.shape[1], activation='relu', kernel_initializer='glorot_uniform'),
+                BatchNormalization(),
+                Dropout(0.5),
+                Dense(units=500, activation='relu', kernel_initializer='glorot_uniform'),
+                BatchNormalization(),
+                Dropout(0.5),
+                Dense(units=10, activation='relu', kernel_initializer='glorot_uniform'),
+                BatchNormalization(),
+                Dropout(0.5),
+                Dense(1, activation='sigmoid')
+            ])
+
+            # Compile model with dynamic learning rate
+            optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+            model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=['accuracy'])
+
+            # Add early stopping to avoid overfitting
+            early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
+
+            # Train model
+            history = model.fit(
+                X_train_resampled, y_train_resampled,
+                epochs=epochs,
+                batch_size=batch_size,
+                validation_data=(X_val, y_val),
+                callbacks=[early_stopping],
+                class_weight=class_weights,  # Apply class weights here
+                verbose=0
+            )
+
+            # Evaluate validation loss
+            val_loss = min(history.history['val_loss'])
+
+            # Update best configuration if validation loss improves
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                best_config = {
+                    'batch_size': batch_size,
+                    'epochs': epochs,
+                    'learning_rate': learning_rate
+                }
+
+print("Best Configuration:", best_config)
+print("Best Validation Loss:", best_val_loss)
+
+# Final Model Training with Best Configuration
+# Reinitialize model with best hyperparameters
+final_model = Sequential([
+    Dense(units=2000, input_dim=X_train_resampled.shape[1], activation='relu', kernel_initializer='glorot_uniform'),
+    BatchNormalization(),
+    Dropout(0.5),
+    Dense(units=500, activation='relu', kernel_initializer='glorot_uniform'),
+    BatchNormalization(),
+    Dropout(0.5),
+    Dense(units=10, activation='relu', kernel_initializer='glorot_uniform'),
+    BatchNormalization(),
+    Dropout(0.5),
+    Dense(1, activation='sigmoid')
+])
+
+# Compile final model
+final_optimizer = tf.keras.optimizers.Adam(learning_rate=best_config['learning_rate'])
+final_model.compile(optimizer=final_optimizer, loss='binary_crossentropy', metrics=['accuracy'])
+
+# Train final model with best hyperparameters
+final_model.fit(
+    X_train_resampled, y_train_resampled,
+    epochs=best_config['epochs'],
+    batch_size=best_config['batch_size'],
+    validation_data=(X_val, y_val),
+    callbacks=[early_stopping],
+    class_weight=class_weights,  # Apply class weights here
+    verbose=1
+)
+
+# Evaluate on test data
+test_loss, test_accuracy = final_model.evaluate(X_test, y_test)
+print("Test Accuracy:", test_accuracy)
+print("Test Loss:", test_loss)
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler
+from imblearn.over_sampling import SMOTE
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, BatchNormalization, Dropout
+from tensorflow.keras.callbacks import EarlyStopping
+import tensorflow as tf
+from imblearn.under_sampling import RandomUnderSampler
+from imblearn.combine import SMOTEENN, SMOTETomek
+from imblearn.over_sampling import ADASYN
+from sklearn.metrics import precision_score, recall_score, roc_auc_score, confusion_matrix, ConfusionMatrixDisplay
+
+
+# Splitting data into train, validation, and test sets
+X_train, X_temp, y_train, y_temp = train_test_split(x, y, test_size=0.3, random_state=123)
+X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.5, random_state=123)
+
+# Standardize features using MinMaxScaler
+scaler = MinMaxScaler()
+X_train = scaler.fit_transform(X_train)
+X_val = scaler.transform(X_val)
+X_test = scaler.transform(X_test)
+
+ros = RandomOverSampler(random_state=42)
+X_train_resampled, y_train_resampled = ros.fit_resample(X_train, y_train)
+
+# Set class weights for minority class
+class_weights = {0: 5, 1: 1}
+
+
+
+# Define ranges for hyperparameters
+batch_sizes = [16, 32, 64, 128, 256, 512]
+epoch_options = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+learning_rates = [0.01, 0.001, 0.0001, 0.00001]
+
+best_config = None
+best_val_loss = float('inf')
+
+# Hyperparameter tuning loop
+for batch_size in batch_sizes:
+    for epochs in epoch_options:
+        for learning_rate in learning_rates:
+            # Define model architecture
+            model = Sequential([
+                Dense(units=2000, input_dim=X_train_resampled.shape[1], activation='relu', kernel_initializer='glorot_uniform'),
+                BatchNormalization(),
+                Dropout(0.5),  # Reduced dropout rate for better regularization
+                Dense(units=500, activation='relu', kernel_initializer='glorot_uniform'),
+                BatchNormalization(),
+                Dropout(0.5),
+                Dense(units=10, activation='relu', kernel_initializer='glorot_uniform'),
+                BatchNormalization(),
+                Dropout(0.5),
+                Dense(1, activation='sigmoid')
+            ])
+
+            # Compile model with dynamic learning rate
+            optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+            model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=['accuracy'])
+
+            # Add early stopping to avoid overfitting
+            early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
+
+            # Train model
+            history = model.fit(X_train_resampled, y_train_resampled,
+                                epochs=epochs,
+                                batch_size=batch_size,
+                                validation_data=(X_val, y_val),
+                                callbacks=[early_stopping],
+                                class_weight=class_weights,  # Add this line
+                                verbose=0)
+
+            # Evaluate validation loss
+            val_loss = min(history.history['val_loss'])
+
+            # Update best configuration if validation loss improves
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                best_config = {
+                    'batch_size': batch_size,
+                    'epochs': epochs,
+                    'learning_rate': learning_rate
+                }
+
+print("Best Configuration:", best_config)
+print("Best Validation Loss:", best_val_loss)
+
+# Final Model Training with Best Configuration
+# Reinitialize model with best hyperparameters
+final_model = Sequential([
+    Dense(units=2000, input_dim=X_train_resampled.shape[1], activation='relu', kernel_initializer='glorot_uniform'),
+    BatchNormalization(),
+    Dropout(0.5),
+    Dense(units=500, activation='relu', kernel_initializer='glorot_uniform'),
+    BatchNormalization(),
+    Dropout(0.5),
+    Dense(units=10, activation='relu', kernel_initializer='glorot_uniform'),
+    BatchNormalization(),
+    Dropout(0.5),
+    Dense(1, activation='sigmoid')
+])
+
+# Compile final model
+final_optimizer = tf.keras.optimizers.Adam(learning_rate=best_config['learning_rate'])
+final_model.compile(optimizer=final_optimizer, loss='binary_crossentropy', metrics=['accuracy'])
+
+# Train final model with best hyperparameters
+final_model.fit(X_train_resampled, y_train_resampled,
+                epochs=best_config['epochs'],
+                batch_size=best_config['batch_size'],
+                validation_data=(X_val, y_val),
+                callbacks=[early_stopping],
+                class_weight=class_weights,  # Add this line
+                verbose=1)
+
+# Evaluate on test data
+test_loss, test_accuracy = final_model.evaluate(X_test, y_test)
+print("Test Accuracy:", test_accuracy)
+print("Test Loss:", test_loss)
+
+# Calculate precision, recall, and AUC
+precision = precision_score(y_test, y_pred)
+recall = recall_score(y_test, y_pred)
+auc_score = roc_auc_score(y_test, y_pred_prob)
+
+print("Precision:", precision)
+print("Recall:", recall)
+print("AUC Score:", auc_score)
+# Confusion Matrix
+conf_matrix = confusion_matrix(y_test, y_pred)
+ConfusionMatrixDisplay(conf_matrix).plot(cmap='Blues')
+plt.title("Confusion Matrix")
+plt.show()
+
+###########Machine learning models##########
+
+import os
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from sklearn.naive_bayes import GaussianNB
+from sklearn.svm import SVC
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import GradientBoostingClassifier, AdaBoostClassifier
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from sklearn.ensemble import RandomForestClassifier
+
+import xgboost as xgb  
+
+
+
+from sklearn.metrics import accuracy_score,confusion_matrix,classification_report
+from sklearn.metrics import recall_score,precision_score,f1_score
+from sklearn.metrics import plot_confusion_matrix,roc_curve,precision_recall_curve
+from sklearn.metrics import roc_auc_score
+from sklearn.metrics import accuracy_score, roc_curve, auc
+
+
+
+import pubchempy as pcp
+
+pd.set_option("display.max_columns", None)
+pd.set_option("display.max_rows", None)
+
+df = pd.read_csv('output (1).csv', encoding='ISO-8859-1')
+df
+
+df.drop(columns=["CID","NAME","CanonicalSMILES","ExactMass"], inplace=True)
+df
+
+df.drop(columns=["ConformerCount3D","Charge"], inplace=True)
+
+# Assuming you have a DataFrame named 'df' with a column 'age' containing values like '25', '30', '35 years old'
+df['MolecularWeight'] = pd.to_numeric(df['MolecularWeight'], errors='coerce') 
+# Converts '25', '30' to numeric, sets '35 years old' to NaN
+df['MonoisotopicMass'] = pd.to_numeric(df['MonoisotopicMass'], errors='coerce')  # Converts '25', '30' to numeric, sets '35 years old' to NaN
+
+
+from sklearn.preprocessing import LabelEncoder
+
+# Create a LabelEncoder object
+le = LabelEncoder()
+
+# Fit the encoder to the target column
+le.fit(df['Activity'])
+
+# Transform the target column
+df['Activity'] = le.transform(df['Activity'])
+df['Activity'].unique()
+
+df= df.dropna()
+df.isna().sum()
+
+plt.figure(figsize=(100,100))
+df.boxplot()
+
+y=df["Activity"]
+x=df.drop("Activity",axis=1)
+y.shape
+
+#####SACLING METHOD
+
+from sklearn.preprocessing import MinMaxScaler,StandardScaler
+
+normal = MinMaxScaler()
+normal.fit(x)
+array = normal.transform(x)
+nor_train_df = pd.DataFrame(array,columns=x.columns)
+nor_train_df.shape
+######TESTING ACCURACY USING STRATIFILEDKFOLD
+
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, roc_auc_score
+from sklearn.model_selection import StratifiedKFold
+import numpy as np
+
+model = LogisticRegression(max_iter=200)
+# Define the Stratified K-Fold cross-validator with 10 splits
+skf = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
+# Variables to store metrics
+train_accuracies = []
+test_accuracies = []
+train_aucs = []
+test_aucs = []
+
+# Loop over each fold
+for train_index, test_index in skf.split(nor_train_df, y):
+    # Split the data into training and testing sets
+    X_train, X_test = nor_train_df.iloc[train_index],nor_train_df.iloc[test_index]
+    y_train, y_test = y.iloc[train_index], y.iloc[test_index]
+    
+    # Train the model
+    model.fit(X_train, y_train)
+    
+    # Get predictions and probabilities for both training and test sets
+    y_train_pred = model.predict(X_train)
+    y_test_pred = model.predict(X_test)
+    
+    # Get the probabilities for calculating AUC (one-vs-rest for multi-class)
+    y_train_proba = model.predict_proba(X_train)
+    y_test_proba = model.predict_proba(X_test)
+    
+    # Calculate training and test accuracies
+    train_accuracy = accuracy_score(y_train, y_train_pred)
+    test_accuracy = accuracy_score(y_test, y_test_pred)
+
+    
+#     # Append the results
+    train_accuracies.append(train_accuracy)
+    test_accuracies.append(test_accuracy)
+
+
+# Convert lists to numpy arrays for mean calculations
+train_accuracies = np.array(train_accuracies)
+test_accuracies = np.array(test_accuracies)
+
+# Print the accuracies and AUCs for each fold
+print("Train Accuracy for each fold: ", train_accuracies)
+print("Test Accuracy for each fold: ", test_accuracies)
+
+# # Print the mean accuracies and AUCs across all folds
+print("\nMean Train Accuracy: ", np.mean(train_accuracies))
+print("Mean Test Accuracy: ", np.mean(test_accuracies))
+
+######TESTING ACCURACY USING STRATIFILEDKFOLD DIFFERENT ML ALGORITHM
+
+
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import accuracy_score
+import numpy as np
+
+# Define the classifiers
+classifiers = {
+    "SVC": SVC(probability=True),
+    "Logistic Regression": LogisticRegression(max_iter=200),
+    "Naive Bayes": GaussianNB(),
+    "Decision Tree": DecisionTreeClassifier(),
+    "Gradient Boosting": GradientBoostingClassifier(),
+    "KNN": KNeighborsClassifier(),
+    "LDA": LinearDiscriminantAnalysis(),
+    "AdaBoost": AdaBoostClassifier(),
+    "XGBoost": xgb.XGBClassifier(use_label_encoder=False, eval_metric='logloss'),
+    "Random Forest": RandomForestClassifier()
+}
+
+# Define the Stratified K-Fold cross-validator with 10 splits
+skf = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
+
+# Loop through each classifier
+for clf_name, model in classifiers.items():
+    print(f"\nClassifier: {clf_name}")
+    
+    # Variables to store metrics for each classifier
+    train_accuracies = []
+    test_accuracies = []
+    
+    # Perform Stratified K-Fold cross-validation
+    for train_index, test_index in skf.split(nor_train_df, y):
+        # Split the data into training and testing sets
+        X_train, X_test = nor_train_df.iloc[train_index], nor_train_df.iloc[test_index]
+        y_train, y_test = y.iloc[train_index], y.iloc[test_index]
+        
+        # Train the model
+        model.fit(X_train, y_train)
+        
+        # Get predictions for both training and test sets
+        y_train_pred = model.predict(X_train)
+        y_test_pred = model.predict(X_test)
+        
+        # Calculate training and test accuracies
+        train_accuracy = accuracy_score(y_train, y_train_pred)
+        test_accuracy = accuracy_score(y_test, y_test_pred)
+        
+        # Append the results
+        train_accuracies.append(train_accuracy)
+        test_accuracies.append(test_accuracy)
+    
+    # Convert lists to numpy arrays for mean calculations
+    train_accuracies = np.array(train_accuracies)
+    test_accuracies = np.array(test_accuracies)
+    
+    # Print the accuracies for each fold and the mean accuracy
+    print("Train Accuracy for each fold: ", train_accuracies)
+    print("Test Accuracy for each fold: ", test_accuracies)
+    print("Mean Train Accuracy: ", np.mean(train_accuracies))
+    print("Mean Test Accuracy: ", np.mean(test_accuracies))
+
+# Define the classifiers
+classifiers = {
+    "SVC": SVC(probability=True),
+    "Logistic Regression": LogisticRegression(max_iter=200),
+    "Naive Bayes": GaussianNB(),
+    "Decision Tree": DecisionTreeClassifier(),
+    "Gradient Boosting": GradientBoostingClassifier(),
+    "KNN": KNeighborsClassifier(),
+    "LDA": LinearDiscriminantAnalysis(),
+    "AdaBoost": AdaBoostClassifier(),
+    "XGBoost": xgb.XGBClassifier(use_label_encoder=False, eval_metric='logloss'),
+    "Random Forest": RandomForestClassifier()
+}
+
+# Define the Stratified K-Fold cross-validator with 10 splits
+skf = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
+
+# Loop through each classifier
+for clf_name, model in classifiers.items():
+    print(f"\nClassifier: {clf_name}")
+    
+    # Variables to store metrics for each classifier
+    train_roc_aucs = []
+    test_roc_aucs = []
+    
+    # Perform Stratified K-Fold cross-validation
+    for train_index, test_index in skf.split(nor_train_df, y):
+        # Split the data into training and testing sets
+        X_train, X_test = nor_train_df.iloc[train_index], nor_train_df.iloc[test_index]
+        y_train, y_test = y.iloc[train_index], y.iloc[test_index]
+        
+        # Train the model
+        model.fit(X_train, y_train)
+        
+        # Get predictions for both training and test sets
+        y_train_pred_proba = model.predict_proba(X_train)[:, 1]  # Get probabilities for the positive class
+        y_test_pred_proba = model.predict_proba(X_test)[:, 1]    # Get probabilities for the positive class
+        
+        # Calculate training ROC AUC score
+        train_roc_auc = roc_auc_score(y_train, y_train_pred_proba)
+        train_roc_aucs.append(train_roc_auc)
+        
+        # Check if both classes are present in y_test
+        if len(np.unique(y_test)) == 2:
+            # Calculate test ROC AUC score
+            test_roc_auc = roc_auc_score(y_test, y_test_pred_proba)
+            test_roc_aucs.append(test_roc_auc)
+        else:
+            print(f"Warning: Only one class present in y_test for fold. Skipping test ROC AUC calculation.")
+            test_roc_aucs.append(np.nan)  # Append NaN or some placeholder
+    
+    # Convert lists to numpy arrays for mean calculations
+    train_roc_aucs = np.array(train_roc_aucs)
+    test_roc_aucs = np.array(test_roc_aucs)
+    
+    # Print the ROC AUC scores for each fold and the mean score
+    print("Train ROC AUC for each fold: ", train_roc_aucs)
+    print("Test ROC AUC for each fold: ", test_roc_aucs)
+    print("Mean Train ROC AUC: ", np.mean(train_roc_aucs))
+    print("Mean Test ROC AUC: ", np.nanmean(test_roc_aucs))
+
+
+print(nor_train_df.shape)  # Should output (84, number_of_features)
+print(y.shape)  # Should output (106,)
+
+#spliting data into train and test
+from sklearn.model_selection import train_test_split
+
+x_train,x_test,y_train,y_test = train_test_split(x,y,test_size=0.2,random_state=42,stratify=y)
+
+##using sacling 
+from sklearn.preprocessing import MinMaxScaler,StandardScaler
+
+normal = MinMaxScaler()
+normal.fit(x_train)
+array = normal.transform(x_train)
+nor_train_df = pd.DataFrame(array,columns=x_train.columns)
+nor_train_df.shape
+
+array1 = normal.transform(x_test)
+nor_test_df = pd.DataFrame(array1,columns=x_test.columns)
+nor_test_df.shape
+
+####using sampling technique
+
+from imblearn.over_sampling import RandomOverSampler
+
+random_sample = RandomOverSampler(random_state=42)
+x_train_resampled, y_train_resampled = random_sample.fit_resample(nor_train_df, y_train)
+
+
+###training model using RF and testing 
+from sklearn.ensemble import RandomForestClassifier
+Rf_model = RandomForestClassifier(random_state=42, class_weight='balanced')
+Rf_model.fit(x_train_resampled,y_train_resampled)
+
+plot_confusion_matrix(Rf_model,x_train_resampled,y_train_resampled)
+
+plot_confusion_matrix(Rf_model,nor_test_df,y_test)
+
+
+# Get predicted probabilities for the positive class
+y_pred_proba = Rf_model.predict_proba(nor_test_df)[:, 1]
+
+# Set a custom threshold (e.g., 0.3)
+threshold = 0.7
+y_pred_custom = np.where(y_pred_proba >= threshold, 1, 0)
+
+# Evaluate the model
+print(classification_report(y_test, y_pred_custom))
+
+
+####Testing for random forest
+from sklearn.metrics import mean_squared_error,mean_absolute_error,r2_score
+
+
+
+array1 = normal.transform(x_test)
+nor_test_df = pd.DataFrame(array1,columns=x_test.columns)
+
+y_pred = Rf_model.predict(nor_test_df)
+
+cnf_matrix = confusion_matrix(y_test,y_pred)
+print("Confusion Matrix\n",cnf_matrix)
+
+accuarcy = accuracy_score(y_test,y_pred)
+print("Accuracy Score\n",accuarcy)
+
+clf_report = classification_report(y_test,y_pred)
+print("Classification report\n",clf_report)
+
+y_pred_prob = Rf_model.predict_proba(x_test)
+fpr,tpr,thresh = roc_curve(y_test,y_pred_prob[:,1])
+plt.plot(fpr,tpr)
+plt.xlabel("False Positive Rate (FPR)")
+plt.ylabel("True Positive Rate (TPR)")
+plt.title("Receiver Operating Characteristic Curve")
+
+y_pred = Rf_model.predict(x_train_resampled)
+
+cnf_matrix = confusion_matrix(y_train_resampled,y_pred)
+print("Confusion Matrix\n",cnf_matrix)
+
+accuarcy = accuracy_score(y_train_resampled,y_pred)
+print("Accuracy Score\n",accuarcy)
+
+clf_report = classification_report(y_train_resampled,y_pred)
+print("Classification report\n",clf_report)
+
+
+####training and testing using svc model
+svc_model =SVC( probability=True,class_weight='balanced',kernel='rbf')
+svc_model.fit(x_train_resampled,y_train_resampled)
+
+plot_confusion_matrix(lg_model,nor_test_df,y_test)
+
+plot_confusion_matrix(lg_model,x_train_resampled,y_train_resampled)
+
+array1 = normal.transform(x_test)
+nor_test_df = pd.DataFrame(array1,columns=x_test.columns)
+
+
+y_pred = lg_model.predict(nor_test_df)
+
+cnf_matrix = confusion_matrix(y_test,y_pred)
+print("Confusion Matrix\n",cnf_matrix)
+
+accuarcy = accuracy_score(y_test,y_pred)
+print("Accuracy Score\n",accuarcy)
+
+clf_report = classification_report(y_test,y_pred)
+print("Classification report\n",clf_report)
+
+y_pred_prob = lg_model.predict_proba(nor_test_df)
+fpr,tpr,thresh = roc_curve(y_test,y_pred_prob[:,1])
+
+plt.plot(fpr,tpr)
+plt.xlabel("False Positive Rate (FPR)")
+plt.ylabel("True Positive Rate (TPR)")
+plt.title("Receiver Operating Characteristic Curve")
+
+y_pred = lg_model.predict(x_train_resampled)
+
+cnf_matrix = confusion_matrix(y_train_resampled,y_pred)
+print("Confusion Matrix\n",cnf_matrix)
+
+accuarcy = accuracy_score(y_train_resampled,y_pred)
+print("Accuracy Score\n",accuarcy)
+
+clf_report = classification_report(y_train_resampled,y_pred)
+print("Classification report\n",clf_report)
+
+
+random_search =  GridSearchCV(SVC(class_weight='balanced'), param_grid=param_grid, cv=10, scoring='f1_macro', verbose=2)
+
+random_search.fit(x_train_resampled, y_train_resampled)
+
+# Best hyperparameters
+best_params = grid.best_params_
+best_lda = grid.best_estimator_
+print(best_lda)
+y_pred = best_lda.predict(nor_test_df)
+
+cnf_matrix = confusion_matrix(y_test,y_pred)
+print("Confusion Matrix\n",cnf_matrix)
+
+accuarcy = accuracy_score(y_test,y_pred)
+print("Accuracy Score\n",accuarcy)
+
+clf_report = classification_report(y_test,y_pred)
+print("Classification report\n",clf_report)
+
+##########################using LOOOC METHOD
+from sklearn.model_selection import LeaveOneOut
+
+# Initialize classifiers
+classifiers = {
+    "SVC": SVC(probability=True),
+    "Logistic Regression": LogisticRegression(),
+    "Naive Bayes": GaussianNB(),
+    "Decision Tree": DecisionTreeClassifier(),
+    "Gradient Boosting": GradientBoostingClassifier(),
+    "KNN": KNeighborsClassifier(),
+    "LDA": LinearDiscriminantAnalysis(),
+    "AdaBoost": AdaBoostClassifier(),
+    "XGBoost": xgb.XGBClassifier(use_label_encoder=False, eval_metric='logloss'),
+    "Random Forest": RandomForestClassifier()
+}
+
+# LOOCV settings
+loo = LeaveOneOut()
+
+# Function to perform LOOCV
+def perform_loocv(classifiers, x_train_resampled, y_train_resampled, nor_test_df, y_test):
+    results = {}
+    
+    for name, model in classifiers.items():
+        print(f"\nEvaluating {name}...")
+        
+        # Perform Leave-One-Out Cross-Validation
+        cv_scores = cross_val_score(model, x_train_resampled, y_train_resampled, cv=loo, scoring='accuracy')
+        
+        # Fit the model and predict the test set
+        model.fit(x_train_resampled, y_train_resampled)
+        y_pred_test = model.predict(nor_test_df)
+        
+        # Compute test set accuracy
+        test_accuracy = accuracy_score(y_test, y_pred_test)
+        
+        # Store the results
+        results[name] = {
+            "LOOCV Accuracies": cv_scores,
+            "Mean LOOCV Accuracy": np.mean(cv_scores),
+            "Test Set Accuracy": test_accuracy
+        }
+        
+        # Print the results
+        print(f"LOOCV Accuracies: {cv_scores}")
+        print(f"Mean LOOCV Accuracy: {np.mean(cv_scores):.4f}")
+        print(f"Test Set Accuracy: {test_accuracy:.4f}")
+    
+    return results
+
+# Usage
+results = perform_loocv(classifiers, x_train_resampled, y_train_resampled, nor_test_df, y_test)
+
+
+
+# Model	Accuracy	AUC                       
+
+# SVC	0.9524	0.952
+
+# Logistic Regression	0.8182	1.0
+
+# Naive Bayes	0.2727	0.238
+
+# Decision Tree	0.8636	0.45238
+
+# Gradient Boosting	 0.8182	0.4761
+
+# KNN	0.9091	0.428
+
+# LDA	0.9091	1.0
+
+# AdaBoost	0.9524	0.9047
+
+# XGBoost	0.9091	0.71
+
+# Random Forest	0.9545	0.9047
+
+
+SVC: 0.9545
+Logistic Regression: 0.8182
+Naive Bayes: 0.2727
+Decision Tree: 0.8636
+Gradient Boosting: 0.8182
+KNN: 0.9091
+LDA: 0.9091
+AdaBoost: 0.9545
+XGBoost: 0.9091
+RandomForest: 0.9545
+
+##############PCA Results##############
+
+import os
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from sklearn.svm import SVC
+from sklearn.metrics import accuracy_score,confusion_matrix,classification_report
+from sklearn.metrics import recall_score,precision_score,f1_score
+from sklearn.metrics import plot_confusion_matrix,roc_curve,precision_recall_curve
+from sklearn.metrics import roc_auc_score
+from sklearn.metrics import accuracy_score, roc_curve, auc
+
+from sklearn.decomposition import PCA
+
+
+import pubchempy as pcp
+
+pd.set_option("display.max_columns", None)
+pd.set_option("display.max_rows", None)
+
+df = pd.read_csv('output (1).csv', encoding='ISO-8859-1')
+df
+
+df.columns
+
+df.info()
+
+df.describe()
+
+df.drop(columns=["CID","NAME","ConformerCount3D","FeatureHydrophobeCount3D","FeatureRingCount3D","ZStericQuadrupole3D","FeatureAnionCount3D","FeatureDonorCount3D","CanonicalSMILES", 'Charge',"HBondDonorCount","IsotopeAtomCount","AtomStereoCount","ExactMass","CovalentUnitCount","PIC50","DefinedAtomStereoCount","UndefinedAtomStereoCount","BondStereoCount","DefinedBondStereoCount","UndefinedBondStereoCount","CovalentUnitCount"], inplace=True)
+
+df.shape
+
+df.info()
+
+from sklearn.preprocessing import LabelEncoder
+
+# Create a LabelEncoder object
+le = LabelEncoder()
+
+# Fit the encoder to the target column
+le.fit(df['Activity'])
+
+# Transform the target column
+df['Activity'] = le.transform(df['Activity'])
+df['Activity'].value_counts
+
+df.isna().sum()
+df= df.dropna()
+
+plt.figure(figsize=(100,100))
+df.boxplot()
+
+y=df["Activity"]
+x=df.drop("Activity",axis=1)
+
+df
+
+from sklearn.model_selection import train_test_split
+
+x_train,x_test,y_train,y_test = train_test_split(x,y,test_size=0.2,random_state=42,stratify=y)
+
+from sklearn.preprocessing import MinMaxScaler,StandardScaler
+
+normal = StandardScaler()
+normal.fit(x_train)
+array = normal.transform(x_train)
+nor_train_df = pd.DataFrame(array,columns=x_train.columns)
+nor_train_df
+
+array1 = normal.transform(x_test)
+nor_test_df = pd.DataFrame(array1,columns=x_test.columns)
+nor_test_df.shape
+
+import pandas as pd
+
+# Assuming df is your DataFrame with numeric columns
+correlation_matrix = df.corr()
+correlation_matrix
+
+from sklearn.preprocessing import StandardScaler
+
+# Step 1: Standardize the data before PCA
+scaler = StandardScaler()
+x_train_scaled = scaler.fit_transform(x)
+
+# Step 2: Apply PCA to the standardized data
+pca = PCA(n_components=2)
+x_train_pca = pca.fit_transform(x_train_scaled)
+
+# Step 3: Calculate loadings for PC1 and PC2
+loadings_pc1_pc2 = pca.components_.T * np.sqrt(pca.explained_variance_)
+
+# Step 4: Convert loadings to DataFrame and check the range
+loading_matrix_pc1_pc2 = pd.DataFrame(loadings_pc1_pc2, index=x.columns, columns=['PC1', 'PC2'])
+print(loading_matrix_pc1_pc2)
+min_loading = loading_matrix_pc1_pc2.min().min()
+max_loading = loading_matrix_pc1_pc2.max().max()
+
+print(f"Range of loadings: [{min_loading:.4f}, {max_loading:.4f}]")
+
+# Step 5: Save the loading matrix to a CSV file
+loading_matrix_pc1_pc2.to_csv('pca_loadings_pc1_pc2.csv')
+
+# Step 6: Output the proportion of variance explained by PC1 and PC2
+explained_variance_ratio = pca.explained_variance_ratio_
+print(f"Proportion of variance explained by PC1: {explained_variance_ratio[0]:.4f}")
+print(f"Proportion of variance explained by PC2: {explained_variance_ratio[1]:.4f}")
+
+# Step 7: Save the explained variance to a CSV file
+explained_variance_df = pd.DataFrame({'PC': ['PC1', 'PC2'], 'Explained Variance': explained_variance_ratio})
+explained_variance_df.to_csv('explained_variance_pc1_pc2.csv', index=False)
+
+# Step 8: Scree Plot (for PC1 and PC2 only)
+plt.figure(figsize=(8,6))
+plt.plot([1, 2], pca.explained_variance_[:2], marker='o', linestyle='--')
+plt.title('Scree Plot (PC1 & PC2)')
+plt.xlabel('Principal Component')
+plt.ylabel('Eigenvalue (Variance)')
+plt.xticks([1, 2], ['PC1', 'PC2'])
+plt.grid(True)
+plt.savefig('scree_plot_pc1_pc2.png', format='png', dpi=300)
+plt.show()
+
+# Step 9: Cumulative Proportion of Variance Explained
+cumulative_variance_pc12 = np.cumsum(explained_variance_ratio)
+plt.figure(figsize=(8,6))
+plt.plot([1, 2], cumulative_variance_pc12, marker='o', linestyle='-')
+plt.title('Cumulative Variance Explained by PC1 & PC2')
+plt.xlabel('Principal Component')
+plt.ylabel('Cumulative Proportion of Variance Explained')
+plt.xticks([1, 2], ['PC1', 'PC2'])
+plt.grid(True)
+plt.savefig('cumulative_variance_pc1_pc2_plot.png', format='png', dpi=300)
+plt.show()
+
+# Step 10: Bar Plot for Proportion of Variance Explained
+plt.bar(['PC1', 'PC2'], explained_variance_ratio, color='blue')
+plt.xlabel('Principal Components')
+plt.ylabel('Proportion of Variance Explained')
+plt.title('Proportion of Variance Explained by PC1 and PC2')
+plt.savefig('explained_variance_pc1_pc2_plot.png', format='png', dpi=300)
+plt.show()
+
+# Step 11: Biplot for PC1 and PC2
+def biplot(pca_scores, loadings, labels=None):
+    plt.figure(figsize=(10, 7))
+    plt.scatter(pca_scores[:, 0], pca_scores[:, 1], alpha=0.5, label='PCA Scores')
+    
+    # Plot loadings (arrows)
+    for i, (loading_x, loading_y) in enumerate(loadings[:, :2]):
+        plt.arrow(0, 0, loading_x, loading_y, color='r', alpha=0.5)
+        label = labels[i] if labels is not None else f"Var{i+1}"
+        plt.text(loading_x * 1.1, loading_y * 1.1, label, color='g')
+    
+    plt.xlabel('PC1')
+    plt.ylabel('PC2')
+    plt.title('Biplot (PC1 & PC2)')
+    plt.grid(True)
+    plt.legend()
+    plt.savefig('biplot_pc1_pc2.png', format='png', dpi=300)
+    plt.show()
+
+# Call the biplot function
+biplot(x_train_pca, loadings_pc1_pc2, labels=x.columns)
+
+# Step 12: Plot Loadings for PC1 and PC2
+def plot_loadings(loadings, labels):
+    plt.figure(figsize=(10, 7))
+    for i, (loading_x, loading_y) in enumerate(loadings[:, :2]):
+        plt.arrow(0, 0, loading_x, loading_y, color='r', alpha=0.7)
+        plt.text(loading_x * 1.1, loading_y * 1.1, labels[i], color='b', ha='center', va='center', fontsize=12)
+    
+    plt.axhline(0, color='grey', lw=1)
+    plt.axvline(0, color='grey', lw=1)
+    plt.xlabel('PC1')
+    plt.ylabel('PC2')
+    plt.title('Loadings Plot (PC1 & PC2)')
+    plt.grid(True)
+    plt.savefig('loadings_plot_pc1_pc2.png', format='png', dpi=300)
+    plt.show()
+
+# Call the plot_loadings function
+plot_loadings(loadings_pc1_pc2, labels=x.columns)
+
+# Step 13: Scatter plot of PC1 vs PC2 with class labels
+plt.figure(figsize=(8, 6))
+plt.scatter(x_train_pca[:, 0], x_train_pca[:, 1], c=y[:x_train_pca.shape[0]], cmap='viridis', alpha=0.7)
+plt.xlabel('PC1')
+plt.ylabel('PC2')
+plt.title('Plot of PC1 vs PC2')
+plt.colorbar(label='Class')
+plt.grid(True)
+plt.savefig('pc1_vs_pc2_with_class_labels.png', format='png', dpi=300)
+plt.show()
+
+pca = PCA()  # No n_components argument to get all components
+x_train_pca = pca.fit_transform(x_train_scaled)
+
+# Step 8: Scree Plot for all PCs
+plt.figure(figsize=(8, 6))
+plt.plot(np.arange(1, len(pca.explained_variance_)+1), pca.explained_variance_, marker='o', linestyle='--')
+plt.title('Scree Plot (All PCs)')
+plt.xlabel('Principal Component')
+plt.ylabel('Eigenvalue (Variance)')
+plt.xticks(np.arange(1, len(pca.explained_variance_)+1))
+plt.grid(True)
+plt.savefig('scree_plot_all_pcs.png', format='png', dpi=300)
+plt.show()
+
+# Step 2: Apply PCA to the standardized data
+pca = PCA()  # Get all principal components
+x_train_pca = pca.fit_transform(x_train_scaled)
+
+# Step 9: Calculate cumulative variance explained for all PCs
+cumulative_variance = np.cumsum(pca.explained_variance_ratio_)
+
+# Plot cumulative variance explained for all PCs
+plt.figure(figsize=(8, 6))
+plt.plot(np.arange(1, len(cumulative_variance) + 1), cumulative_variance, marker='o', linestyle='-')
+plt.title('Cumulative Variance Explained by All PCs')
+plt.xlabel('Principal Component')
+plt.ylabel('Cumulative Proportion of Variance Explained')
+plt.xticks(np.arange(1, len(cumulative_variance) + 1))
+plt.grid(True)
+plt.savefig('cumulative_variance_all_pcs.png', format='png', dpi=300)
+plt.show()
+
+
+# Step 2: Apply PCA to get the first 6 principal components
+pca = PCA(n_components=6)  # Limit to first 6 components
+x_train_pca = pca.fit_transform(x_train_scaled)
+
+# Step 9: Calculate cumulative variance explained for the first 6 PCs
+cumulative_variance_6pcs = np.cumsum(pca.explained_variance_ratio_)
+
+# Plot cumulative variance explained for the first 6 PCs
+plt.figure(figsize=(8, 6))
+plt.plot(np.arange(1, len(cumulative_variance_6pcs) + 1), cumulative_variance_6pcs, marker='o', linestyle='-')
+plt.title('Cumulative Variance Explained by First 6 PCs')
+plt.xlabel('Principal Component')
+plt.ylabel('Cumulative Proportion of Variance Explained')
+plt.xticks(np.arange(1, len(cumulative_variance_6pcs) + 1))
+plt.grid(True)
+plt.savefig('cumulative_variance_6pcs.png', format='png', dpi=300)
+plt.show()
+
+# Step 2: Apply PCA to the standardized data to get all components
+pca = PCA()  # No n_components, so it will calculate all PCs
+x_train_pca = pca.fit_transform(x_train_scaled)
+
+# Step 3: Calculate loadings for all PCs
+loadings_all_pcs = pca.components_.T * np.sqrt(pca.explained_variance_)
+
+# Step 4: Convert loadings to DataFrame
+loading_matrix_all_pcs = pd.DataFrame(loadings_all_pcs, index=x.columns, columns=[f'PC{i+1}' for i in range(loadings_all_pcs.shape[1])])
+
+# Step 5: Plot Loadings for all PCs
+def plot_loadings_all(loadings, labels):
+    plt.figure(figsize=(12, 8))
+    
+    # Plot loadings for each feature across all PCs
+    for i in range(loadings.shape[1]):
+        plt.scatter(np.arange(len(loadings[:, i])), loadings[:, i], label=f'PC{i+1}', alpha=0.7)
+    
+    plt.axhline(0, color='grey', lw=1)
+    plt.xticks(np.arange(len(labels)), labels, rotation=90)
+    plt.xlabel('Features')
+    plt.ylabel('Loadings')
+    plt.title('Loadings for All Principal Components')
+    plt.legend(loc='best')
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig('loadings_all_pcs.png', format='png', dpi=300)
+    plt.show()
+
+# Call the function to plot loadings for all PCs
+plot_loadings_all(loadings_all_pcs, labels=x.columns)
+
+# Create a summary DataFrame with key PCA statistics
+pca_summary_df = pd.DataFrame({
+    'PC': [f'PC{i+1}' for i in range(len(pca.explained_variance_))],
+    'Explained Variance': pca.explained_variance_,
+    'Proportion of Variance Explained': pca.explained_variance_ratio_,
+    'Cumulative Variance Explained': np.cumsum(pca.explained_variance_ratio_),
+    "Standard deviation":np.sqrt(pca.explained_variance_)
+})
+
+print("\nPCA Summary:")
+print(pca_summary_df)
+
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+from sklearn.neighbors import KNeighborsClassifier
+from imblearn.over_sampling import SMOTE
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# Assuming x_train and y_train are already defined
+
+# # Step 1: Apply Oversampling (SMOTE)
+# smote = SMOTE(random_state=42)
+# x_train_resampled, y_train_resampled = smote.fit_resample(x_train, y_train)
+
+# # Step 2: Standardize the data
+# std_scalar = MinMaxScaler()
+# std_array = std_scalar.fit_transform(x_train)
+# x_train_std = pd.DataFrame(std_array, columns=x_train.columns)
+
+# Step 3: Apply PCA
+pca = PCA(n_components=x.shape[1])  # Apply PCA for all components
+x_train_pca = pca.fit_transform(x)
+
+# Check if the number of samples in x_train_pca and y_train_resampled match
+print(f"x_train_pca shape: {x_train_pca.shape}")
+print(f"y_train_resampled shape: {y.shape}")
+
+# Plot PC1 and PC2 (Only for first 2 components)
+plt.figure(figsize=(8, 6))
+plt.scatter(x_train_pca[:, 0], x_train_pca[:, 1], c=y[:x_train_pca.shape[0]], cmap='viridis')
+plt.xlabel('PC1')
+plt.ylabel('PC2')
+plt.title('Plot of PC1 vs PC2')
+plt.colorbar(label='Class')
+
+# Save the PC1 vs PC2 plot as an image
+plt.savefig('pc1_vs_pc2_plot.png', format='png', dpi=300)  # Save with high resolution (300 DPI)
+plt.show()
+
+import pandas as pd
+import numpy as np
+from sklearn.decomposition import PCA
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# Assuming `x_train` is the standardized dataset used in PCA
+
+# Step 1: Calculate the correlation matrix
+correlation_matrix = pd.DataFrame(x_train).corr()
+
+# Plot the heatmap to visually inspect correlations
+plt.figure(figsize=(14, 10))
+sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', center=0)
+plt.title("Correlation Matrix Heatmap")
+plt.show()
+
+# Step 2: Drop highly correlated features (keep one of each correlated pair)
+# Correlation threshold (can be adjusted, here set to 0.8)
+corr_threshold = 0.5
+
+# Identify pairs of highly correlated features
+upper_tri = correlation_matrix.where(np.triu(np.ones(correlation_matrix.shape), k=1).astype(bool))
+to_drop = [column for column in upper_tri.columns if any(upper_tri[column] > corr_threshold)]
+
+# Drop these features from the dataset
+x_train_reduced = pd.DataFrame(x_train).drop(columns=to_drop)
+
+print("Dropped features due to high correlation:", to_drop)
+
+# Step 3: Apply PCA again on the reduced dataset
+pca = PCA(n_components=x_train_reduced.shape[1])
+x_train_pca_reduced = pca.fit_transform(x_train_reduced)
+
+# Step 4: Visualize the explained variance of each principal component
+plt.figure(figsize=(10,6))
+plt.bar(range(1, len(pca.explained_variance_ratio_) + 1), pca.explained_variance_ratio_, alpha=0.5, align='center')
+plt.xlabel('Principal Components')
+plt.ylabel('Explained Variance Ratio')
+plt.title('PCA Explained Variance')
+plt.show()
+
+# Step 5: Check loadings to remove features with low contributions
+loadings = pd.DataFrame(pca.components_.T, columns=[f'PC{i+1}' for i in range(x_train_reduced.shape[1])],
+                        index=x_train_reduced.columns)
+
+# Display loadings for PC1 and PC2
+print(loadings[['PC1', 'PC2']])
+
+# Step 6: Optionally, drop features with very low loadings in both PC1 and PC2
+loading_threshold = 0.05
+low_loading_features = loadings[(loadings['PC1'].abs() < loading_threshold) & (loadings['PC2'].abs() < loading_threshold)].index
+x_train_final = x_train_reduced.drop(columns=low_loading_features)
+
+print("Dropped features due to low loading values:", list(low_loading_features))
+
+from imblearn.over_sampling import RandomOverSampler
+
+random_sample = RandomOverSampler(random_state=42)
+x_train_resampled, y_train_resampled = random_sample.fit_resample(nor_train_df, y_train)
+
+
+x_train_resampled.shape,y_train_resampled.shape
+
+svc_model =SVC( probability=True,class_weight='balanced',kernel='rbf')
+
+svc_model.fit(x_train_resampled,y_train_resampled)
+
+svc_model.score(x_train_resampled,y_train_resampled)
+
+pca.explained_variance_
+
+pca.explained_variance_ratio_
+
+array1 = np.cumsum(pca.explained_variance_ratio_)
+array1
+
+plt.plot(array1)
+
+from sklearn.ensemble import RandomForestClassifier
+# from sklearn.ensemble import GradientBoostingClassifier, AdaBoostClassifier
+
+#import xgboost as xgb  
+
+svc_model =SVC( probability=True,class_weight='balanced',kernel='rbf')
+
+svc_model.fit(x_train_resampled,y_train_resampled)
+
+nor_test_df
+
+plot_confusion_matrix(svc_model,nor_test_df,y_test)
+
+plot_confusion_matrix(svc_model,x_train_resampled,y_train_resampled)
+
+
+y_pred = svc_model.predict(nor_test_df)
+
+cnf_matrix = confusion_matrix(y_test,y_pred)
+print("Confusion Matrix\n",cnf_matrix)
+
+accuarcy = accuracy_score(y_test,y_pred)
+print("Accuracy Score\n",accuarcy)
+
+clf_report = classification_report(y_test,y_pred)
+print("Classification report\n",clf_report)
+
+# Reset the index of the transformed test dataframe
+nor_test_df.reset_index(drop=True, inplace=True)
+y_test.reset_index(drop=True, inplace=True)
+
+
+
+# Find indices where the actual class is 0 and predicted class is also 0
+right_classified_as_0_indices = y_test.index[(y_test == 0) & (y_pred == 0)]
+
+# Print the correctly classified rows
+print("Correctly classified as 0 (indices):", right_classified_as_0_indices)
+
+# If you want to see the corresponding test data rows
+right_classified_as_0_data = nor_test_df.loc[right_classified_as_0_indices]
+print("Correctly classified as 0 data rows:\n", right_classified_as_0_data)
+
+y_pred
+
+y_pred_prob = svc_model.predict_proba(nor_test_df)
+fpr,tpr,thresh = roc_curve(y_test,y_pred_prob[:,1])
+
+auc_value = roc_auc_score(y_test, y_pred_prob[:, 1])
+print("AUC Score:", auc_value)
+
+plt.plot(fpr,tpr)
+plt.xlabel("False Positive Rate (FPR)")
+plt.ylabel("True Positive Rate (TPR)")
+plt.title("Receiver Operating Characteristic Curve")
+
+y_pred = svc_model.predict(x_train_resampled)
+
+cnf_matrix = confusion_matrix(y_train_resampled,y_pred)
+print("Confusion Matrix\n",cnf_matrix)
+
+accuarcy = accuracy_score(y_train_resampled,y_pred)
+print("Accuracy Score\n",accuarcy)
+
+clf_report = classification_report(y_train_resampled,y_pred)
+print("Classification report\n",clf_report)
+
+import joblib
+
+# Save the trained model to a file
+joblib.dump(svc_model, 'trained_model.pkl')
+
+# Load the saved model from a file
+model = joblib.load('trained_model.pkl')
+
+test_df = pd.read_csv('final_Mangrove_dataset.csv', encoding='ISO-8859-1')
+test_df.shape
+
+test_df.drop(columns=['TPSA','XLogP','FeatureCationCount3D','FeatureAcceptorCount3D','RotatableBondCount','YStericQuadrupole3D','XStericQuadrupole3D','YStericQuadrupole3D',"FeatureHydrophobeCount3D","FeatureRingCount3D","ZStericQuadrupole3D","FeatureAnionCount3D","FeatureDonorCount3D","HBondDonorCount","IsotopeAtomCount","AtomStereoCount","DefinedAtomStereoCount","UndefinedAtomStereoCount","BondStereoCount","DefinedBondStereoCount","UndefinedBondStereoCount"], inplace=True)
+
+# Get unique SMILES with their corresponding row numbers
+unique_smiles_indices = test_df.drop_duplicates(subset=["CanonicalSMILES"]).index
+
+# If you want to display the unique SMILES along with their row numbers
+unique_smiles = test_df.drop_duplicates(subset=["CanonicalSMILES"])[["CanonicalSMILES"]]
+unique_smiles["Row_Number"] = unique_smiles_indices
+unique_smiles
+
+
+X_new_scaled = normal.transform(test_df)  # Scale new data
+X_new_scaled.shape
+
+# Predict using the trained model
+predictions = model.predict(X_new_scaled)
+
+# If it's a classification mo
+del, you can check predicted labels
+print(predictions)
+
+results = pd.DataFrame({
+    'Prediction': predictions
+})
+results.shape
+
+# Find rows where the value is 0
+zero_rows = results[results['Prediction']== 0]
+
+# Display the rows that contain only 0 values
+zero_rows
+
+
+###############SVM model##############
+
+import os
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from sklearn.svm import SVC
+from sklearn.metrics import accuracy_score,confusion_matrix,classification_report
+from sklearn.metrics import recall_score,precision_score,f1_score
+from sklearn.metrics import plot_confusion_matrix,roc_curve,precision_recall_curve
+from sklearn.metrics import roc_auc_score
+from sklearn.metrics import accuracy_score, roc_curve, auc
+
+
+
+import pubchempy as pcp
+
+pd.set_option("display.max_columns", None)
+pd.set_option("display.max_rows", None)
+
+df = pd.read_csv('output (1).csv', encoding='ISO-8859-1')
+df
+
+df.info()
+
+df.describe()
+
+df.drop(columns=["CID","NAME","CanonicalSMILES","ExactMass"], inplace=True)
+df
+
+df.drop(columns=["ConformerCount3D","Charge"], inplace=True)
+
+df.info()
+
+from sklearn.preprocessing import LabelEncoder
+
+# Create a LabelEncoder object
+le = LabelEncoder()
+
+# Fit the encoder to the target column
+le.fit(df['Activity'])
+
+# Transform the target column
+df['Activity'] = le.transform(df['Activity'])
+df['Activity'].unique()
+
+df= df.dropna()
+df.isna().sum()
+
+y=df["Activity"]
+x=df.drop("Activity",axis=1)
+y.shape
+
+from sklearn.model_selection import train_test_split
+
+x_train,x_test,y_train,y_test = train_test_split(x,y,test_size=0.2,random_state=42,stratify=y)
+
+from sklearn.preprocessing import MinMaxScaler,StandardScaler
+
+normal = MinMaxScaler()
+normal.fit(x_train)
+array = normal.transform(x_train)
+nor_train_df = pd.DataFrame(array,columns=x_train.columns)
+nor_train_df
+
+array1 = normal.transform(x_test)
+nor_test_df = pd.DataFrame(array1,columns=x_test.columns)
+nor_test_df.shape
+
+from imblearn.over_sampling import RandomOverSampler
+
+random_sample = RandomOverSampler(random_state=42)
+x_train_resampled, y_train_resampled = random_sample.fit_resample(nor_train_df, y_train)
+
+x_train_resampled.shape,y_train_resampled.shape
+
+from sklearn.linear_model import LogisticRegression
+svc_model =SVC( probability=True,class_weight='balanced',kernel='rbf')
+svc_model.fit(x_train_resampled,y_train_resampled)
+
+
+nor_test_df
+
+plot_confusion_matrix(svc_model,nor_test_df,y_test)
+
+plot_confusion_matrix(svc_model,x_train_resampled,y_train_resampled)
+
+
+y_pred = svc_model.predict(nor_test_df)
+
+cnf_matrix = confusion_matrix(y_test,y_pred)
+print("Confusion Matrix\n",cnf_matrix)
+
+accuarcy = accuracy_score(y_test,y_pred)
+print("Accuracy Score\n",accuarcy)
+
+clf_report = classification_report(y_test,y_pred)
+print("Classification report\n",clf_report)
+
+# Reset the index of the transformed test dataframe
+nor_test_df.reset_index(drop=True, inplace=True)
+y_test.reset_index(drop=True, inplace=True)
+
+
+
+# Find indices where the actual class is 0 and predicted class is also 0
+right_classified_as_0_indices = y_test.index[(y_test == 0) & (y_pred == 0)]
+
+# Print the correctly classified rows
+print("Correctly classified as 0 (indices):", right_classified_as_0_indices)
+
+# If you want to see the corresponding test data rows
+right_classified_as_0_data = nor_test_df.loc[right_classified_as_0_indices]
+print("Correctly classified as 0 data rows:\n", right_classified_as_0_data)
+
+
+y_pred_prob = svc_model.predict_proba(nor_test_df)
+fpr,tpr,thresh = roc_curve(y_test,y_pred_prob[:,1])
+
+auc_value = roc_auc_score(y_test, y_pred_prob[:, 1])
+print("AUC Score:", auc_value)
+
+plt.plot(fpr,tpr)
+plt.xlabel("False Positive Rate (FPR)")
+plt.ylabel("True Positive Rate (TPR)")
+plt.title("Receiver Operating Characteristic Curve")
+
+y_pred = svc_model.predict(x_train_resampled)
+
+cnf_matrix = confusion_matrix(y_train_resampled,y_pred)
+print("Confusion Matrix\n",cnf_matrix)
+
+accuarcy = accuracy_score(y_train_resampled,y_pred)
+print("Accuracy Score\n",accuarcy)
+
+clf_report = classification_report(y_train_resampled,y_pred)
+print("Classification report\n",clf_report)
+
+import joblib
+
+# Save the trained model to a file
+joblib.dump(svc_model, 'trained_model.pkl')
+
+# Load the saved model from a file
+model = joblib.load('trained_model.pkl')
+
+
+
+
